@@ -7,9 +7,11 @@ import {
   useUpdateProgram,
   useCreateProgram,
 } from "@/lib/hooks/usePrograms";
+import { ErrorState } from "@/components/common/ErrorState";
+import { LoadingState } from "@/components/common/LoadingState";
 
 export default function ProgramsPage() {
-  const { data: programs = [], isLoading, error } = usePrograms();
+  const { data: programs = [], isLoading, error, refetch } = usePrograms();
   const updateProgram = useUpdateProgram();
   const createProgram = useCreateProgram();
 
@@ -22,18 +24,16 @@ export default function ProgramsPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <p>Loading programs...</p>
-      </div>
-    );
+    return <LoadingState message="Loading programs..." />;
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <p className="text-destructive">Error loading programs: {error.message}</p>
-      </div>
+      <ErrorState
+        message={error.message || "Failed to load programs. Please try again."}
+        onRetry={() => refetch()}
+        title="Error Loading Programs"
+      />
     );
   }
 

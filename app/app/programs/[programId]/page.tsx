@@ -1,10 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { use } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -15,70 +13,20 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { RequirementsChecklist } from "@/components/programs/RequirementsChecklist";
 import { DeadlineChip } from "@/components/programs/DeadlineChip";
-import { Program, ProgramStatus, Requirement } from "@/lib/types";
-import { differenceInDays, formatDistanceToNow } from "date-fns";
+import { ProgramStatus } from "@/lib/types";
+import { differenceInDays } from "date-fns";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-
-// Mock data - in real app, fetch from API
-const mockProgram: Program = {
-  id: "1",
-  university: "MIT",
-  department: "Computer Science",
-  deadline: new Date("2024-12-15"),
-  status: "applying",
-  requirementsCompleted: 4,
-  requirementsTotal: 7,
-  fee: 95,
-};
-
-const mockRequirements: Requirement[] = [
-  {
-    id: "1",
-    programId: "1",
-    name: "Statement of Purpose",
-    completed: true,
-    notes: "Focus on AI safety research",
-  },
-  {
-    id: "2",
-    programId: "1",
-    name: "3 Letters of Recommendation",
-    completed: true,
-    notes: "Prof. Smith, Prof. Jones, Prof. Lee",
-  },
-  {
-    id: "3",
-    programId: "1",
-    name: "GRE Scores",
-    completed: true,
-  },
-  {
-    id: "4",
-    programId: "1",
-    name: "Transcripts",
-    completed: true,
-  },
-  {
-    id: "5",
-    programId: "1",
-    name: "Writing Sample",
-    completed: false,
-    notes: "Need to finalize research paper",
-  },
-  {
-    id: "6",
-    programId: "1",
-    name: "Application Fee",
-    completed: false,
-  },
-  {
-    id: "7",
-    programId: "1",
-    name: "CV/Resume",
-    completed: false,
-  },
-];
+import { usePrograms, useUpdateProgram } from "@/lib/hooks/usePrograms";
+import {
+  useRequirements,
+  useUpdateRequirement,
+  useCreateRequirement,
+  useDeleteRequirement,
+} from "@/lib/hooks/useRequirements";
+import { useMemo } from "react";
+import { ErrorState } from "@/components/common/ErrorState";
+import { LoadingState } from "@/components/common/LoadingState";
 
 export default function ProgramDetailPage({
   params,
@@ -86,55 +34,91 @@ export default function ProgramDetailPage({
   params: Promise<{ programId: string }>;
 }) {
   const resolvedParams = use(params);
-  const [program, setProgram] = useState<Program>(mockProgram);
-  const [requirements, setRequirements] = useState<Requirement[]>(mockRequirements);
-  const [notes, setNotes] = useState("");
+  const programId = resolvedParams.programId;
+
+  const { data: programs = [], isLoading: programsLoading, error: programsError, refetch: refetchPrograms } = usePrograms();
+  const { data: requirements = [], isLoading: requirementsLoading, error: requirementsError, refetch: refetchRequirements } = useRequirements(programId);
+  const updateProgram = useUpdateProgram();
+  const updateRequirement = useUpdateRequirement();
+  const createRequirement = useCreateRequirement();
+  const deleteRequirement = useDeleteRequirement();
+
+  const program = useMemo(() => {
+    return programs.find((p) => p.id === programId);
+  }, [programs, programId]);
+
+  const isLoading = programsLoading || requirementsLoading;
+  const error = programsError || requirementsError;
+
+  if (isLoading) {
+    return <LoadingState message="Loading program..." />;
+  }
+
+  if (error) {
+    return (
+      <div className="p-8">
+        <Link href="/app/programs">
+          <Button variant="ghost" size="sm" className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Programs
+          </Button>
+        </Link>
+        <ErrorState
+          message={error.message || "Failed to load program. Please try again."}
+          onRetry={() => {
+            refetchPrograms();
+            refetchRequirements();
+          }}
+          title="Error Loading Program"
+        />
+      </div>
+    );
+  }
+
+  if (!program) {
+    return (
+      <div className="p-8">
+        <Link href="/app/programs">
+          <Button variant="ghost" size="sm" className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Programs
+          </Button>
+        </Link>
+        <ErrorState
+          message="The program you're looking for doesn't exist or has been deleted."
+          title="Program Not Found"
+        />
+      </div>
+    );
+  }
 
   const daysUntil = differenceInDays(program.deadline, new Date());
 
   const handleStatusChange = (status: ProgramStatus) => {
-    setProgram((prev) => ({ ...prev, status }));
+    updateProgram.mutate({ id: programId, updates: { status } });
   };
 
   const handleRequirementToggle = (requirementId: string, completed: boolean) => {
-    setRequirements((prev) =>
-      prev.map((req) =>
-        req.id === requirementId ? { ...req, completed } : req
-      )
-    );
-    // Update program completion count
-    const updated = requirements.map((req) =>
-      req.id === requirementId ? { ...req, completed } : req
-    );
-    const completedCount = updated.filter((r) => r.completed).length;
-    setProgram((prev) => ({
-      ...prev,
-      requirementsCompleted: completedCount,
-      requirementsTotal: updated.length,
-    }));
+    updateRequirement.mutate({ id: requirementId, updates: { completed } });
   };
 
   const handleRequirementUpdate = (
     requirementId: string,
-    updates: Partial<Requirement>
+    updates: Partial<{ name: string; notes: string; documentId: string }>
   ) => {
-    setRequirements((prev) =>
-      prev.map((req) =>
-        req.id === requirementId ? { ...req, ...updates } : req
-      )
-    );
+    updateRequirement.mutate({ id: requirementId, updates });
   };
 
-  const handleRequirementCreate = (requirement: Omit<Requirement, "id">) => {
-    const newRequirement: Requirement = {
-      ...requirement,
-      id: Date.now().toString(),
-    };
-    setRequirements((prev) => [...prev, newRequirement]);
-    setProgram((prev) => ({
-      ...prev,
-      requirementsTotal: prev.requirementsTotal + 1,
-    }));
+  const handleRequirementCreate = (requirement: { programId: string; name: string; completed?: boolean }) => {
+    createRequirement.mutate({
+      programId: requirement.programId,
+      name: requirement.name,
+      completed: requirement.completed ?? false,
+    });
+  };
+
+  const handleRequirementDelete = (requirementId: string) => {
+    deleteRequirement.mutate(requirementId);
   };
 
   return (
@@ -201,6 +185,7 @@ export default function ProgramDetailPage({
             onRequirementToggle={handleRequirementToggle}
             onRequirementUpdate={handleRequirementUpdate}
             onRequirementCreate={handleRequirementCreate}
+            onRequirementDelete={handleRequirementDelete}
           />
         </TabsContent>
         <TabsContent value="notes" className="mt-6">
@@ -212,8 +197,10 @@ export default function ProgramDetailPage({
               </p>
             </div>
             <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={program.notes || ""}
+              onChange={(e) => {
+                updateProgram.mutate({ id: programId, updates: { notes: e.target.value } });
+              }}
               placeholder="Add your notes here..."
               className="min-h-[400px]"
             />

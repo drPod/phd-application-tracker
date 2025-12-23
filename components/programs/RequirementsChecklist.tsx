@@ -15,14 +15,20 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Requirement } from "@/lib/types";
-import { Paperclip, Plus, ChevronDown, ChevronRight } from "lucide-react";
+import { Paperclip, Plus, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { DocumentSelector } from "./DocumentSelector";
+import { useDocuments } from "@/lib/hooks/useDocuments";
 
 interface RequirementsChecklistProps {
   requirements: Requirement[];
   onRequirementToggle: (requirementId: string, completed: boolean) => void;
   onRequirementUpdate: (requirementId: string, updates: Partial<Requirement>) => void;
   onRequirementCreate: (requirement: Omit<Requirement, "id">) => void;
+  onRequirementDelete?: (requirementId: string) => void;
 }
 
 const defaultRequirements = [
@@ -39,9 +45,15 @@ export function RequirementsChecklist({
   onRequirementToggle,
   onRequirementUpdate,
   onRequirementCreate,
+  onRequirementDelete,
 }: RequirementsChecklistProps) {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDocumentSelectorOpen, setIsDocumentSelectorOpen] = useState(false);
+  const [requirementToDelete, setRequirementToDelete] = useState<Requirement | null>(null);
+  const [requirementForDocument, setRequirementForDocument] = useState<Requirement | null>(null);
+  const { data: documents = [] } = useDocuments();
 
   const toggleExpanded = (id: string) => {
     setExpandedItems((prev) => {
@@ -69,6 +81,31 @@ export function RequirementsChecklist({
 
     setIsDialogOpen(false);
     e.currentTarget.reset();
+  };
+
+  const handleDeleteClick = (requirement: Requirement) => {
+    setRequirementToDelete(requirement);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (requirementToDelete && onRequirementDelete) {
+      onRequirementDelete(requirementToDelete.id);
+      setIsDeleteDialogOpen(false);
+      setRequirementToDelete(null);
+    }
+  };
+
+  const handleAttachDocumentClick = (requirement: Requirement) => {
+    setRequirementForDocument(requirement);
+    setIsDocumentSelectorOpen(true);
+  };
+
+  const handleDocumentSelect = (documentId: string) => {
+    if (requirementForDocument) {
+      onRequirementUpdate(requirementForDocument.id, { documentId });
+      setRequirementForDocument(null);
+    }
   };
 
   return (
@@ -195,14 +232,37 @@ export function RequirementsChecklist({
                             className="min-h-[80px] text-sm"
                           />
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                        >
-                          <Paperclip className="h-3 w-3 mr-2" />
-                          Attach Document
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => handleAttachDocumentClick(requirement)}
+                          >
+                            <Paperclip className="h-3 w-3 mr-2" />
+                            {requirement.documentId ? "Change Document" : "Attach Document"}
+                          </Button>
+                          {requirement.documentId && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onRequirementUpdate(requirement.id, { documentId: undefined })}
+                            >
+                              Remove
+                            </Button>
+                          )}
+                          {onRequirementDelete && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteClick(requirement)}
+                            >
+                              <Trash2 className="h-3 w-3 mr-2" />
+                              Delete
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -212,6 +272,40 @@ export function RequirementsChecklist({
           })
         )}
       </div>
+
+      <DocumentSelector
+        open={isDocumentSelectorOpen}
+        onOpenChange={setIsDocumentSelectorOpen}
+        documents={documents}
+        onSelect={handleDocumentSelect}
+        currentDocumentId={requirementForDocument?.documentId}
+      />
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Requirement</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{requirementToDelete?.name}"? 
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteDialogOpen(false);
+                setRequirementToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

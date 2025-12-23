@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,9 +9,18 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreVertical, Plus, Paperclip } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { MoreVertical, Plus, Paperclip, Trash2 } from "lucide-react";
 import { DeadlineChip } from "./DeadlineChip";
 import { Program, ProgramStatus } from "@/lib/types";
 import { Progress } from "@/components/ui/progress";
@@ -18,6 +28,7 @@ import { Progress } from "@/components/ui/progress";
 interface ProgramCardProps {
   program: Program;
   onStatusChange?: (programId: string, status: ProgramStatus) => void;
+  onDelete?: (programId: string) => void;
 }
 
 const statusOptions: { value: ProgramStatus; label: string }[] = [
@@ -27,48 +38,67 @@ const statusOptions: { value: ProgramStatus; label: string }[] = [
   { value: "decision", label: "Decision" },
 ];
 
-export function ProgramCard({ program, onStatusChange }: ProgramCardProps) {
+export function ProgramCard({ program, onStatusChange, onDelete }: ProgramCardProps) {
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const progressPercentage =
     program.requirementsTotal > 0
       ? (program.requirementsCompleted / program.requirementsTotal) * 100
       : 0;
 
+  const handleDelete = () => {
+    onDelete?.(program.id);
+    setIsDeleteDialogOpen(false);
+  };
+
   return (
-    <Card className="hover:shadow-md transition-shadow">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1">
-            <Link
-              href={`/app/programs/${program.id}`}
-              className="block group"
-            >
-              <h3 className="font-semibold text-base group-hover:text-primary transition-colors">
-                {program.university}
-              </h3>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {program.department}
-              </p>
-            </Link>
+    <>
+      <Card className="hover:shadow-md transition-shadow">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex-1">
+              <Link
+                href={`/app/programs/${program.id}`}
+                className="block group"
+              >
+                <h3 className="font-semibold text-base group-hover:text-primary transition-colors">
+                  {program.university}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {program.department}
+                </p>
+              </Link>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {statusOptions.map((option) => (
+                  <DropdownMenuItem
+                    key={option.value}
+                    onClick={() => onStatusChange?.(program.id, option.value)}
+                    className={program.status === option.value ? "bg-accent" : ""}
+                  >
+                    {option.label}
+                  </DropdownMenuItem>
+                ))}
+                {onDelete && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setIsDeleteDialogOpen(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {statusOptions.map((option) => (
-                <DropdownMenuItem
-                  key={option.value}
-                  onClick={() => onStatusChange?.(program.id, option.value)}
-                  className={program.status === option.value ? "bg-accent" : ""}
-                >
-                  {option.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
 
         <div className="mb-3">
           <DeadlineChip deadline={program.deadline} />
@@ -102,6 +132,30 @@ export function ProgramCard({ program, onStatusChange }: ProgramCardProps) {
         </div>
       </CardContent>
     </Card>
+
+    <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete Program</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to delete {program.university} - {program.department}? 
+            This action cannot be undone and will also delete all associated requirements.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setIsDeleteDialogOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={handleDelete}>
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

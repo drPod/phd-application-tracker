@@ -13,9 +13,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { UploadDialog } from "./UploadDialog";
-import { Plus, FileText, File, FileCheck, FileX } from "lucide-react";
+import { Plus, FileText, File, FileCheck, FileX, Download, ExternalLink, Trash2, Edit } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { downloadFile, deleteFile } from "@/lib/supabase/storage";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const documentTypes: { value: DocumentType; label: string }[] = [
   { value: "sop", label: "Statement of Purpose" },
@@ -28,16 +38,24 @@ const documentTypes: { value: DocumentType; label: string }[] = [
 interface DocumentsPanelProps {
   documents: Document[];
   programs: Array<{ id: string; university: string; department: string }>;
-  onDocumentUpload: (document: Omit<Document, "id" | "lastModified">) => void;
+  onDocumentUpload: (document: Omit<Document, "id" | "lastModified">, file?: File) => void;
+  onDocumentDelete?: (documentId: string) => void;
+  onDocumentUpdate?: (id: string, document: Omit<Document, "id" | "lastModified">, file?: File) => void;
 }
 
 export function DocumentsPanel({
   documents,
   programs,
   onDocumentUpload,
+  onDocumentDelete,
+  onDocumentUpdate,
 }: DocumentsPanelProps) {
   const [selectedType, setSelectedType] = useState<DocumentType>("sop");
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null);
+  const [documentToEdit, setDocumentToEdit] = useState<Document | null>(null);
 
   const filteredDocuments = documents.filter((doc) => doc.type === selectedType);
 
@@ -80,6 +98,75 @@ export function DocumentsPanel({
       })
       .filter(Boolean);
     return names.length > 0 ? names.join(", ") : "No programs";
+  };
+
+  const handleDownload = async (doc: Document) => {
+    if (!doc.fileUrl) {
+      toast.error("No file available for download");
+      return;
+    }
+
+    try {
+      const blob = await downloadFile(doc.fileUrl);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${doc.name}.${doc.fileUrl.split('.').pop()?.split('?')[0] || 'pdf'}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success("File downloaded successfully");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to download file");
+    }
+  };
+
+  const handleView = (doc: Document) => {
+    if (!doc.fileUrl) {
+      toast.error("No file available to view");
+      return;
+    }
+    window.open(doc.fileUrl, "_blank");
+  };
+
+  const handleDeleteClick = (doc: Document) => {
+    setDocumentToDelete(doc);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!documentToDelete || !onDocumentDelete) return;
+
+    try {
+      // Delete file from storage if it exists
+      if (documentToDelete.fileUrl) {
+        try {
+          await deleteFile(documentToDelete.fileUrl);
+        } catch (error) {
+          // Continue with database deletion even if file deletion fails
+          console.error("Failed to delete file from storage:", error);
+        }
+      }
+      onDocumentDelete(documentToDelete.id);
+      setDeleteDialogOpen(false);
+      setDocumentToDelete(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete document");
+    }
+  };
+
+  const handleEditClick = (doc: Document) => {
+    setDocumentToEdit(doc);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = (document: Omit<Document, "id" | "lastModified">, file?: File) => {
+    if (documentToEdit && onDocumentUpdate) {
+      onDocumentUpdate(documentToEdit.id, document, file);
+      setIsEditDialogOpen(false);
+      setDocumentToEdit(null);
+    }
   };
 
   return (
@@ -154,6 +241,7 @@ export function DocumentsPanel({
                   <TableHead>Assigned Programs</TableHead>
                   <TableHead>Last Modified</TableHead>
                   <TableHead>Word Count</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -175,6 +263,66 @@ export function DocumentsPanel({
                     <TableCell className="text-sm text-muted-foreground">
                       {doc.wordCount ? `${doc.wordCount.toLocaleString()} words` : "—"}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {onDocumentUpdate && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditClick(doc);
+                            }}
+                            title="Edit document"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {doc.fileUrl && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleView(doc);
+                              }}
+                              title="View file"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownload(doc);
+                              }}
+                              title="Download file"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                        {onDocumentDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick(doc);
+                            }}
+                            title="Delete document"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -182,6 +330,42 @@ export function DocumentsPanel({
           </div>
         )}
       </div>
+
+      <UploadDialog
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        documentType={documentToEdit?.type || selectedType}
+        programs={programs}
+        onUpload={handleEditSubmit}
+        document={documentToEdit || undefined}
+        mode="edit"
+      />
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Document</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{documentToDelete?.name}"? 
+              This action cannot be undone and will also remove the file from storage.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setDocumentToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

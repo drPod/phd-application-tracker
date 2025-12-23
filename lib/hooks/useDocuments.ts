@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { Document, DocumentType, DocumentStatus } from "@/lib/types";
 import { toast } from "sonner";
+import { uploadFile, deleteFile } from "@/lib/supabase/storage";
 
 interface DocumentRow {
   id: string;
@@ -79,14 +80,26 @@ export function useCreateDocument() {
     mutationFn: async ({
       document,
       assignedProgramIds,
+      file,
     }: {
       document: Omit<Document, "id" | "lastModified" | "assignedProgramIds">;
       assignedProgramIds: string[];
+      file?: File;
     }) => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
+
+      // Upload file if provided
+      let fileUrl = document.fileUrl;
+      if (file) {
+        try {
+          fileUrl = await uploadFile(file, document.name);
+        } catch (error) {
+          throw new Error(`Failed to upload file: ${error instanceof Error ? error.message : "Unknown error"}`);
+        }
+      }
 
       // Create document
       const { data: docData, error: docError } = await supabase
@@ -98,7 +111,7 @@ export function useCreateDocument() {
           status: document.status,
           last_modified: new Date().toISOString(),
           word_count: document.wordCount ?? null,
-          file_url: document.fileUrl ?? null,
+          file_url: fileUrl ?? null,
         })
         .select()
         .single();
@@ -140,15 +153,38 @@ export function useUpdateDocument() {
       id,
       updates,
       assignedProgramIds,
+      file,
+      oldFileUrl,
     }: {
       id: string;
       updates: Partial<Document>;
       assignedProgramIds?: string[];
+      file?: File;
+      oldFileUrl?: string;
     }) => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
+
+      // Upload new file if provided
+      let fileUrl = updates.fileUrl;
+      if (file) {
+        try {
+          // Delete old file if it exists
+          if (oldFileUrl) {
+            try {
+              await deleteFile(oldFileUrl);
+            } catch (error) {
+              // Continue even if old file deletion fails
+              console.error("Failed to delete old file:", error);
+            }
+          }
+          fileUrl = await uploadFile(file, updates.name || `document_${id}`);
+        } catch (error) {
+          throw new Error(`Failed to upload file: ${error instanceof Error ? error.message : "Unknown error"}`);
+        }
+      }
 
       const updateData: any = {};
       if (updates.name !== undefined) updateData.name = updates.name;
@@ -158,7 +194,7 @@ export function useUpdateDocument() {
         updateData.last_modified = updates.lastModified.toISOString();
       if (updates.wordCount !== undefined)
         updateData.word_count = updates.wordCount ?? null;
-      if (updates.fileUrl !== undefined) updateData.file_url = updates.fileUrl ?? null;
+      if (fileUrl !== undefined) updateData.file_url = fileUrl ?? null;
 
       const { data, error } = await supabase
         .from("documents")

@@ -9,6 +9,7 @@ export interface Program {
   requirementsCompleted: number;
   requirementsTotal: number;
   fee?: number;
+  notes?: string;
 }
 
 export interface Requirement {

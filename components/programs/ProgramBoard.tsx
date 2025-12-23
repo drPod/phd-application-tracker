@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
+import { useDeleteProgram } from "@/lib/hooks/usePrograms";
 
 const statusColumns: { status: ProgramStatus; label: string }[] = [
   { status: "researching", label: "Researching" },
@@ -38,9 +39,14 @@ export function ProgramBoard({
 }: ProgramBoardProps) {
   const router = useRouter();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const deleteProgram = useDeleteProgram();
 
   const handleStatusChange = (programId: string, status: ProgramStatus) => {
     onProgramUpdate?.(programId, { status });
+  };
+
+  const handleDelete = (programId: string) => {
+    deleteProgram.mutate(programId);
   };
 
   const handleCreateProgram = (e: React.FormEvent<HTMLFormElement>) => {
@@ -157,6 +163,7 @@ export function ProgramBoard({
                     key={program.id}
                     program={program}
                     onStatusChange={handleStatusChange}
+                    onDelete={handleDelete}
                   />
                 ))}
                 {column.programs.length === 0 && (

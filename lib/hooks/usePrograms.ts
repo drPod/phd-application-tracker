@@ -15,6 +15,7 @@ interface ProgramRow {
   requirements_completed: number;
   requirements_total: number;
   fee: number | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -29,6 +30,7 @@ function transformProgram(row: ProgramRow): Program {
     requirementsCompleted: row.requirements_completed,
     requirementsTotal: row.requirements_total,
     fee: row.fee ?? undefined,
+    notes: row.notes ?? undefined,
   };
 }
 
@@ -77,6 +79,7 @@ export function useCreateProgram() {
           requirements_completed: program.requirementsCompleted,
           requirements_total: program.requirementsTotal,
           fee: program.fee ?? null,
+          notes: program.notes ?? null,
         })
         .select()
         .single();
@@ -122,6 +125,7 @@ export function useUpdateProgram() {
       if (updates.requirementsTotal !== undefined)
         updateData.requirements_total = updates.requirementsTotal;
       if (updates.fee !== undefined) updateData.fee = updates.fee ?? null;
+      if (updates.notes !== undefined) updateData.notes = updates.notes ?? null;
 
       const { data, error } = await supabase
         .from("programs")

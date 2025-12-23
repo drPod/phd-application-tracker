@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import * as React from "react";
 import {
   Dialog,
   DialogContent,
@@ -28,8 +29,10 @@ interface UploadDialogProps {
   onOpenChange: (open: boolean) => void;
   documentType: DocumentType;
   programs: Array<{ id: string; university: string; department: string }>;
-  onUpload: (document: Omit<Document, "id" | "lastModified">) => void;
+  onUpload: (document: Omit<Document, "id" | "lastModified">, file?: File) => void;
   children?: React.ReactNode;
+  document?: Document;
+  mode?: "create" | "edit";
 }
 
 export function UploadDialog({
@@ -39,13 +42,32 @@ export function UploadDialog({
   programs,
   onUpload,
   children,
+  document,
+  mode = "create",
 }: UploadDialogProps) {
-  const [name, setName] = useState("");
-  const [status, setStatus] = useState<DocumentStatus>("draft");
+  const [name, setName] = useState(document?.name || "");
+  const [status, setStatus] = useState<DocumentStatus>(document?.status || "draft");
   const [selectedProgramIds, setSelectedProgramIds] = useState<Set<string>>(
-    new Set()
+    new Set(document?.assignedProgramIds || [])
   );
   const [file, setFile] = useState<File | null>(null);
+
+  // Reset form when dialog opens/closes or document changes
+  React.useEffect(() => {
+    if (open) {
+      if (mode === "edit" && document) {
+        setName(document.name);
+        setStatus(document.status);
+        setSelectedProgramIds(new Set(document.assignedProgramIds));
+        setFile(null);
+      } else {
+        setName("");
+        setStatus("draft");
+        setSelectedProgramIds(new Set());
+        setFile(null);
+      }
+    }
+  }, [open, document, mode]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -71,22 +93,28 @@ export function UploadDialog({
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!name || !file) return;
+    if (!name) return;
+    if (mode === "create" && !file) return;
 
-    onUpload({
-      name,
-      type: documentType,
-      status,
-      assignedProgramIds: Array.from(selectedProgramIds),
-      wordCount: undefined, // Could extract from file if needed
-      fileUrl: undefined, // Would be set after upload to storage
-    });
+    onUpload(
+      {
+        name,
+        type: documentType,
+        status,
+        assignedProgramIds: Array.from(selectedProgramIds),
+        wordCount: document?.wordCount, // Preserve word count in edit mode
+        fileUrl: document?.fileUrl, // Preserve file URL in edit mode if no new file
+      },
+      file || undefined
+    );
 
     // Reset form
-    setName("");
-    setStatus("draft");
-    setSelectedProgramIds(new Set());
-    setFile(null);
+    if (mode === "create") {
+      setName("");
+      setStatus("draft");
+      setSelectedProgramIds(new Set());
+      setFile(null);
+    }
     onOpenChange(false);
   };
 
@@ -95,25 +123,32 @@ export function UploadDialog({
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Upload Document</DialogTitle>
+          <DialogTitle>{mode === "edit" ? "Edit Document" : "Upload Document"}</DialogTitle>
           <DialogDescription>
-            Upload a document and assign it to programs
+            {mode === "edit" 
+              ? "Update document details and assign it to programs"
+              : "Upload a document and assign it to programs"}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="file">File</Label>
+            <Label htmlFor="file">File {mode === "edit" && "(optional - leave empty to keep current file)"}</Label>
             <div className="flex items-center gap-4">
               <Input
                 id="file"
                 type="file"
                 accept=".pdf,.doc,.docx"
                 onChange={handleFileChange}
-                required
+                required={mode === "create"}
               />
               {file && (
                 <span className="text-sm text-muted-foreground">
                   {file.name}
+                </span>
+              )}
+              {mode === "edit" && document?.fileUrl && !file && (
+                <span className="text-sm text-muted-foreground">
+                  Current file: {document.name}
                 </span>
               )}
             </div>
@@ -188,9 +223,9 @@ export function UploadDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={!name || !file}>
+            <Button type="submit" disabled={!name || (mode === "create" && !file)}>
               <Upload className="h-4 w-4 mr-2" />
-              Upload
+              {mode === "edit" ? "Update" : "Upload"}
             </Button>
           </div>
         </form>

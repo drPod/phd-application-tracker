@@ -2,16 +2,21 @@
 
 import { DocumentsPanel } from "@/components/documents/DocumentsPanel";
 import { Document } from "@/lib/types";
-import { useDocuments, useCreateDocument } from "@/lib/hooks/useDocuments";
+import { useDocuments, useCreateDocument, useDeleteDocument, useUpdateDocument } from "@/lib/hooks/useDocuments";
 import { usePrograms } from "@/lib/hooks/usePrograms";
+import { ErrorState } from "@/components/common/ErrorState";
+import { LoadingState } from "@/components/common/LoadingState";
 
 export default function DocumentsPage() {
-  const { data: documents = [], isLoading: documentsLoading, error: documentsError } = useDocuments();
-  const { data: programs = [], isLoading: programsLoading } = usePrograms();
+  const { data: documents = [], isLoading: documentsLoading, error: documentsError, refetch: refetchDocuments } = useDocuments();
+  const { data: programs = [], isLoading: programsLoading, refetch: refetchPrograms } = usePrograms();
   const createDocument = useCreateDocument();
+  const deleteDocument = useDeleteDocument();
+  const updateDocument = useUpdateDocument();
 
   const handleDocumentUpload = (
-    documentData: Omit<Document, "id" | "lastModified">
+    documentData: Omit<Document, "id" | "lastModified">,
+    file?: File
   ) => {
     createDocument.mutate({
       document: {
@@ -22,6 +27,30 @@ export default function DocumentsPage() {
         fileUrl: documentData.fileUrl,
       },
       assignedProgramIds: documentData.assignedProgramIds,
+      file,
+    });
+  };
+
+  const handleDocumentUpdate = (
+    id: string,
+    documentData: Omit<Document, "id" | "lastModified">,
+    file?: File
+  ) => {
+    // Find the current document to get the old file URL
+    const currentDoc = documents.find((d) => d.id === id);
+    
+    updateDocument.mutate({
+      id,
+      updates: {
+        name: documentData.name,
+        type: documentData.type,
+        status: documentData.status,
+        wordCount: documentData.wordCount,
+        fileUrl: documentData.fileUrl,
+      },
+      assignedProgramIds: documentData.assignedProgramIds,
+      file,
+      oldFileUrl: currentDoc?.fileUrl,
     });
   };
 
@@ -32,18 +61,19 @@ export default function DocumentsPage() {
   }));
 
   if (documentsLoading || programsLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <p>Loading documents...</p>
-      </div>
-    );
+    return <LoadingState message="Loading documents..." />;
   }
 
   if (documentsError) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <p className="text-destructive">Error loading documents: {documentsError.message}</p>
-      </div>
+      <ErrorState
+        message={documentsError.message || "Failed to load documents. Please try again."}
+        onRetry={() => {
+          refetchDocuments();
+          refetchPrograms();
+        }}
+        title="Error Loading Documents"
+      />
     );
   }
 
@@ -53,6 +83,8 @@ export default function DocumentsPage() {
         documents={documents}
         programs={programsForPanel}
         onDocumentUpload={handleDocumentUpload}
+        onDocumentDelete={(id) => deleteDocument.mutate(id)}
+        onDocumentUpdate={handleDocumentUpdate}
       />
     </div>
   );
