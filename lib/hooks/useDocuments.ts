@@ -39,7 +39,7 @@ async function transformDocument(
     type: row.type,
     status: row.status,
     assignedProgramIds:
-      documentPrograms?.map((dp: DocumentProgramRow) => dp.program_id) || [],
+      documentPrograms?.map((dp) => dp.program_id) || [],
     lastModified: new Date(row.last_modified),
     wordCount: row.word_count ?? undefined,
     fileUrl: row.file_url ?? undefined,
